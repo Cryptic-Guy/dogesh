@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>CYBER-PUP PROTOCOL v5.0</title>
+    <style>
+        :root { --blue: #00f2ff; --pink: #ff00ff; --green: #39ff14; --gold: #ffcf00; --bg: #050508; }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; }
+        body { 
+            margin: 0; background: var(--bg); color: white; 
+            font-family: 'Courier New', Courier, monospace;
+            display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden;
+        }
+
+        #game-container {
+            width: 100%; max-width: 450px; height: 100vh;
+            background: radial-gradient(circle at top, #111 0%, #000 100%);
+            border: 2px solid #222; display: flex; flex-direction: column; position: relative;
+        }
+
+        /* Top HUD */
+        .hud { padding: 15px; background: rgba(0,0,0,0.8); border-bottom: 1px solid #333; z-index: 10; display: grid; grid-template-columns: 1fr 1fr; gap: 10px;}
+        .currency-display { grid-column: span 2; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #222; padding-bottom: 8px; margin-bottom: 5px;}
+        .coin-text { color: var(--gold); font-weight: bold; font-size: 18px; text-shadow: 0 0 10px var(--gold); }
+        .sync-text { color: var(--blue); font-size: 11px; text-transform: uppercase; }
+
+        .stat-bar { background: #111; padding: 5px; border-radius: 4px; border: 1px solid #333; }
+        .bar-label { font-size: 9px; margin-bottom: 3px; color: #888; }
+        .bar-bg { background: #000; height: 8px; border-radius: 4px; overflow: hidden; }
+        .bar-fill { height: 100%; width: 100%; transition: width 0.4s cubic-bezier(0.47, 0, 0.745, 0.715); }
+
+        /* Stage */
+        #stage { flex-grow: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; overflow: hidden; }
+        #sprite {
+            width: 250px; height: 250px;
+            background: url('cyberdog.png') no-repeat;
+            background-size: 300% 200%;
+            transition: transform 0.1s;
+            filter: drop-shadow(0 0 15px var(--blue));
+            cursor: pointer; z-index: 5;
+        }
+        .bounce { animation: idleBounce 3s ease-in-out infinite; }
+        @keyframes idleBounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+
+        /* Terminal */
+        #log { width: 90%; height: 40px; font-size: 11px; color: var(--green); overflow: hidden; margin-bottom: 10px; border-left: 2px solid var(--green); padding-left: 10px; }
+
+        /* Action Menu */
+        .controls { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; padding: 15px; background: #080808; border-top: 1px solid #333; }
+        .btn { 
+            background: #111; border: 1px solid var(--blue); color: var(--blue); 
+            padding: 12px 2px; font-size: 9px; font-weight: bold; border-radius: 8px; cursor: pointer;
+            display: flex; flex-direction: column; align-items: center; transition: 0.2s;
+        }
+        .btn:active { transform: scale(0.9); background: var(--blue); color: #000; }
+        .btn:disabled { opacity: 0.3; filter: grayscale(1); cursor: not-allowed; }
+
+        /* Mini Game Items */
+        .data-bit { position: absolute; font-size: 24px; cursor: pointer; animation: drop 2.5s linear forwards; z-index: 20; }
+        @keyframes drop { to { transform: translateY(100vh); } }
+
+        /* Overlays */
+        .overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.9); z-index: 100; display: none; align-items: center; justify-content: center; flex-direction: column; }
+        .overlay.active { display: flex; }
+        .modal { background: #111; border: 2px solid var(--gold); padding: 25px; border-radius: 20px; text-align: center; width: 85%; box-shadow: 0 0 30px var(--gold); }
+
+        .floating-val { position: absolute; font-weight: bold; pointer-events: none; animation: riseFade 0.8s forwards; z-index: 30; }
+        @keyframes riseFade { to { transform: translateY(-80px); opacity: 0; } }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <!-- Daily Reward Overlay -->
+    <div id="daily-overlay" class="overlay">
+        <div class="modal">
+            <h2 style="color:var(--gold); margin:0;">DAILY SYNC</h2>
+            <p id="streak-txt" style="font-size: 12px; color: #888;">Streak: 1 Day</p>
+            <button onclick="claimReward()" style="width:100%; padding:15px; background:var(--gold); border:none; font-weight:bold; border-radius:10px; cursor:pointer;">COLLECT ₿YTES</button>
+        </div>
+    </div>
+
+    <!-- HUD -->
+    <div class="hud">
+        <div class="currency-display">
+            <span class="coin-text">₿ <span id="ui-bytes">0</span></span>
+            <span class="sync-text">SYNC-LINK: <span id="ui-streak">1</span>D</span>
+        </div>
+        <div class="stat">
+            <div class="bar-label">⚡ ENERGY</div>
+            <div class="bar-bg"><div id="bar-nrg" class="bar-fill" style="background: var(--blue)"></div></div>
+        </div>
+        <div class="stat">
+            <div class="bar-label">⚙️ INTEGRITY</div>
+            <div class="bar-bg"><div id="bar-hp" class="bar-fill" style="background: var(--green)"></div></div>
+        </div>
+    </div>
+
+    <!-- Stage -->
+    <div id="stage">
+        <div id="sprite" class="bounce" onclick="handleTap(event)" style="background-position: 50% 0%;"></div>
+        <div id="log">> System Online. Pat the unit to begin...</div>
+        <div id="timer-ui" style="display:none; color:var(--pink); font-size:24px; font-weight:bold;">10s</div>
+    </div>
+
+    <!-- Menu -->
+    <div class="controls">
+        <button class="btn" onclick="perform('feed')"><span>🔋</span>FEED<br>(20B)</button>
+        <button class="btn" onclick="perform('play')"><span>🎮</span>PLAY<br>(FREE)</button>
+        <button class="btn" onclick="perform('mine')"><span>⛏️</span>MINE<br>(NRG)</button>
+        <button class="btn" onclick="perform('repair')"><span>🛠️</span>REPAIR<br>(50B)</button>
+    </div>
+</div>
+
+<script>
+    // --- APP STATE ---
+    let state = {
+        bytes: 100, energy: 80, hp: 100, streak: 1, lastClaim: 0, level: 1
+    };
+
+    const pos = {
+        idle: "50% 0%", ball: "0% 0%", zzz: "100% 0%", shock: "0% 100%", eat: "50% 100%", heart: "100% 100%"
+    };
+
+    // --- AUDIO ENGINE ---
+    const actx = new (window.AudioContext || window.webkitAudioContext)();
+    function sound(f, d, type='sine') {
+        const o = actx.createOscillator(); const g = actx.createGain();
+        o.type = type; o.frequency.value = f; g.gain.exponentialRampToValueAtTime(0.0001, actx.currentTime + d);
+        o.connect(g); g.connect(actx.destination); o.start(); o.stop(actx.currentTime + d);
+    }
+
+    // --- INIT ---
+    function init() {
+        const saved = localStorage.getItem('cyberpup_v5');
+        if(saved) state = JSON.parse(saved);
+        
+        checkDaily();
+        updateUI();
+        
+        // Passive Energy Drain (1% every 45s)
+        setInterval(() => {
+            state.energy = Math.max(0, state.energy - 1);
+            if(state.energy <= 0) state.hp = Math.max(0, state.hp - 1);
+            updateUI(); save();
+        }, 45000);
+    }
+
+    function checkDaily() {
+        const now = Date.now();
+        const day = 24 * 60 * 60 * 1000;
+        if (now - state.lastClaim > day) {
+            if (now - state.lastClaim > day * 2) state.streak = 1;
+            document.getElementById('daily-overlay').classList.add('active');
+            document.getElementById('streak-txt').innerText = `Sync-Link: ${state.streak} Days`;
+        }
+    }
+
+    function claimReward() {
+        let reward = 150 * state.streak;
+        state.bytes += reward;
+        state.streak++;
+        state.lastClaim = Date.now();
+        document.getElementById('daily-overlay').classList.remove('active');
+        sound(800, 0.4); sound(1200, 0.4);
+        msg(`Received ${reward}₿ Daily Sync Bonus!`);
+        updateUI(); save();
+    }
+
+    // --- CORE MECHANICS ---
+    function handleTap(e) {
+        state.bytes += 1;
+        state.energy = Math.max(0, state.energy - 0.1);
+        spawnFx(e.clientX, e.clientY, "+1₿", "var(--gold)");
+        
+        const spr = document.getElementById('sprite');
+        spr.style.backgroundPosition = pos.shock;
+        spr.style.transform = "scale(1.1)";
+        sound(1500, 0.05);
+
+        setTimeout(() => {
+            spr.style.backgroundPosition = (Math.random() > 0.8) ? pos.heart : pos.idle;
+            spr.style.transform = "scale(1)";
+        }, 200);
+        
+        updateUI(); save();
+    }
+
+    function perform(act) {
+        const spr = document.getElementById('sprite');
+        
+        if (act === 'feed') {
+            if(state.bytes < 20) return msg("Insufficent Bytes.");
+            state.bytes -= 20; state.energy = Math.min(100, state.energy + 25);
+            spr.style.backgroundPosition = pos.eat;
+            sound(200, 0.3, 'sawtooth');
+            msg("Injecting power cells...");
+        } 
+        else if (act === 'repair') {
+            if(state.bytes < 50) return msg("Insufficent Bytes.");
+            state.bytes -= 50; state.hp = Math.min(100, state.hp + 30);
+            msg("System defragmentation complete.");
+            sound(1000, 0.5);
+        }
+        else if (act === 'mine') {
+            if(state.energy < 30) return msg("Energy too low to mine.");
+            startMining();
+        }
+        else if (act === 'play') {
+            startMiniGame();
+        }
+
+        updateUI(); save();
+        setTimeout(() => spr.style.backgroundPosition = pos.idle, 1500);
+    }
+
+    // --- WAYS TO EARN ---
+    function startMining() {
+        msg("Mining Protocol engaged... Stand by.");
+        state.energy -= 30;
+        let count = 0;
+        let loop = setInterval(() => {
+            state.bytes += 5;
+            spawnFx(window.innerWidth/2, window.innerHeight/2, "+5₿", "var(--gold)");
+            sound(100, 0.1, 'square');
+            updateUI();
+            count++;
+            if(count >= 10) { clearInterval(loop); msg("Mining complete. earned 50₿."); save(); }
+        }, 800);
+    }
+
+    function startMiniGame() {
+        msg("Play Protocol Initiated! Catch the data!");
+        document.getElementById('timer-ui').style.display = "block";
+        let time = 10;
+        let game = setInterval(() => {
+            time--;
+            document.getElementById('timer-ui').innerText = time + "s";
+            spawnBit();
+            if(time <= 0) {
+                clearInterval(game);
+                document.getElementById('timer-ui').style.display = "none";
+                msg("Session ended. Energy boosted!");
+            }
+        }, 1000);
+    }
+
+    function spawnBit() {
+        const bit = document.createElement('div');
+        bit.className = 'data-bit';
+        bit.innerText = ['💾', '⚡', '₿', '🔵'][Math.floor(Math.random()*4)];
+        bit.style.left = Math.random() * 80 + 10 + "%";
+        bit.onclick = () => {
+            state.bytes += 10; state.energy += 2;
+            sound(2000, 0.05);
+            spawnFx(event.clientX, event.clientY, "+10₿", "var(--gold)");
+            bit.remove();
+            updateUI();
+        };
+        document.getElementById('stage').appendChild(bit);
+        setTimeout(() => bit.remove(), 2500);
+    }
+
+    // --- UI TOOLS ---
+    function updateUI() {
+        document.getElementById('ui-bytes').innerText = Math.floor(state.bytes);
+        document.getElementById('ui-streak').innerText = state.streak;
+        document.getElementById('bar-nrg').style.width = state.energy + "%";
+        document.getElementById('bar-hp').style.width = state.hp + "%";
+        
+        const spr = document.getElementById('sprite');
+        if(state.energy < 15) spr.style.filter = "grayscale(1) brightness(0.5)";
+        else spr.style.filter = "drop-shadow(0 0 15px var(--blue))";
+    }
+
+    function msg(m) { document.getElementById('log').innerText = "> " + m; }
+    function save() { localStorage.setItem('cyberpup_v5', JSON.stringify(state)); }
+
+    function spawnFx(x, y, txt, color) {
+        const f = document.createElement('div');
+        f.className = 'floating-val'; f.innerText = txt; f.style.color = color;
+        f.style.left = x + "px"; f.style.top = y + "px";
+        document.body.appendChild(f);
+        setTimeout(() => f.remove(), 800);
+    }
+
+    init();
+</script>
+</body>
+</html>
